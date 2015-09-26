@@ -20,13 +20,13 @@ class Posting(docId: Int, var termFrequency: Int) extends Serializable {
 }
 
 object MySimpleApp {
-  def reduce(a: Posting, b: Posting): Posting = {
-    if (a._id == b._id) (new Posting(a._id, a._frequency + b._frequency))
-    else a
-
-
-  }
-
+  
+  /**
+   * Compresses the list of Postings
+   *
+   * @param postings
+   * @return
+   */
   def compress(postings: mutable.MutableList[Int]): Array[Int] = {
     val codec: IntegratedIntegerCODEC = new
         IntegratedComposition(
@@ -34,57 +34,52 @@ object MySimpleApp {
           new IntegratedVariableByte());
     // output vector should be large enough...
     val data: Array[Int] = postings.toArray;
-    //Array.fill(256){0}
     var compressed: Array[Int] = Array.fill(data.length + 1024) {
       0
     };
-    // compressed might not be large enough in some cases
-    // if you get java.lang.ArrayIndexOutOfBoundsException, try
-    // allocating more memory
 
     /**
      *
      * compressing
      *
      */
+
     val inputoffset: IntWrapper = new IntWrapper(0);
     val outputoffset: IntWrapper = new IntWrapper(0);
     codec.compress(data, inputoffset, postings.length, compressed, outputoffset);
-    // got it!
-    // inputoffset should be at data.length but outputoffset tells
-    // us where we are...
-    System.out.println("compressed from " + (data.length * 4.0) /(1.024) + "B to " + (outputoffset.intValue() * 4.0) / 1.024 + "B");
+
+    System.out.println("compressed from " + (data.length * 4.0) / (1.024) + "B to " + (outputoffset.intValue() * 4.0) / 1.024 + "B");
     // we can repack the data: (optional)
     compressed = util.Arrays.copyOf(compressed, outputoffset.intValue());
     compressed
   }
 
   def main(args: Array[String]) {
+
     val conf = new SparkConf().setAppName("Inverted Index")
     val sc = new SparkContext(conf)
     println("Enter number if files you want to deal with");
-    val input: InputStreamReader   = new InputStreamReader(System.in);
-   val br: BufferedReader  = new BufferedReader(input);
-    val nFiles:Int = Integer.parseInt(br.readLine());
+    val input: InputStreamReader = new InputStreamReader(System.in);
+    val br: BufferedReader = new BufferedReader(input);
+    val nFiles: Int = Integer.parseInt(br.readLine());
+    //The RDD for all words and Postings
     var wordsMappedPosting: RDD[(String, Posting)] = sc.emptyRDD;
-    for (i <- 1 to nFiles){
+
+    /**
+     * Populating the RDD
+     */
+    for (i <- 1 to nFiles) {
       val logFile = "/home/shiwangi/spark-1.1.0/README.md" // Read the fileName instead
       val logData = sc.textFile(logFile, 2).cache()
       val docId = i;
-
       val words = logData.flatMap(line => line.split(" "))
-
       val wordsMappedToOne: RDD[(String, Posting)] = words.map(word => (word, new Posting(docId, 1)))
       wordsMappedPosting = wordsMappedPosting.++(wordsMappedToOne);
     }
 
 
-
-
-
     val map = scala.collection.mutable.Map.empty[String, Array[Int]]
     val listWord = wordsMappedPosting.groupByKey();
-
     for ((s, post) <- listWord) {
       val postingMap = post.map(p => (p._id, p._frequency));
       val groupedPosting = postingMap.groupBy(_._1);
