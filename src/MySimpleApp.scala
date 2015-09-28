@@ -20,7 +20,7 @@ class Posting(docId: Int, var termFrequency: Int) extends Serializable {
 }
 
 object MySimpleApp {
-  
+
   /**
    * Compresses the list of Postings
    *
@@ -79,19 +79,29 @@ object MySimpleApp {
 
 
     val map = scala.collection.mutable.Map.empty[String, Array[Int]]
+
+    /**
+     * Here I'm performing a transformation on a RDD ~~Returns a pointer to a RDD
+     * So essentially listWord Should be a RDD
+     */
     val listWord = wordsMappedPosting.groupByKey();
-    for ((s, post) <- listWord) {
+
+    /**
+     * Will all these operations be performed on clusters? Which of the operations are actions and which ones Transformation?
+     */
+
+    for ((word, post) <- listWord) {
       val postingMap = post.map(p => (p._id, p._frequency));
       val groupedPosting = postingMap.groupBy(_._1);
       var postings: MutableList[Int] = MutableList();
       for ((id, freq) <- groupedPosting) {
         val x = freq.foldLeft(0)((r, c) => r + c._2)
-        println(s + " -> (" + id + " , " + x + ")")
+        println(word + " -> (" + id + " , " + x + ")")
         postings += (id);
         postings += x;
       }
       val compressedPostings: Array[Int] = compress(postings)
-      map(s) = compressedPostings
+      map(word) = compressedPostings
     }
 
   }
