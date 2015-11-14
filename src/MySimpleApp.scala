@@ -68,8 +68,10 @@ object MySimpleApp {
     /**
      * Populating the RDD
      */
+    System.out.println("Enter file path")
+    val logFile = br.readLine()
     for (i <- 1 to nFiles) {
-      val logFile = "/home/shiwangi/spark-1.1.0/README.md" // Read the fileName instead
+     // val logFile = "file://home/others/IIMA20042/README.txt" // Read the fileName instead
       val logData = sc.textFile(logFile, 2).cache()
       val docId = i;
       val words = logData.flatMap(line => line.split(" "))
@@ -87,7 +89,7 @@ object MySimpleApp {
     val listWord = wordsMappedPosting.groupByKey();
 
     /**
-     * Will all these operations be performed on clusters? Which of the operations are actions and which ones Transformation?
+     * TODO : Will all these operations be performed on clusters? Which of the operations are actions and which ones Transformation?
      */
 
     for ((word, post) <- listWord) {
