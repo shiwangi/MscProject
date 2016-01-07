@@ -2,7 +2,8 @@
  * Created by shiwangi on 4/9/15.
  */
 
-import java.io.{InputStreamReader, BufferedReader}
+import java.io._
+import java.text.DecimalFormat
 import java.util
 
 import me.lemire.integercompression._
@@ -13,10 +14,13 @@ import org.apache.spark.{SparkConf, SparkContext}
 import scala.collection.mutable
 import scala.collection.mutable.MutableList
 
-class Posting(docId: Int, var termFrequency: Int) extends Serializable {
+class Posting(docId: Int, var termFrequency: Int) extends Serializable  {
   var _id: Int = docId
   var _frequency: Int = termFrequency
 
+}
+object PostingOrdering extends Ordering[Posting] {
+  def compare(a:Posting, b:Posting) = a._id compare b._id
 }
 
 object MySimpleApp {
@@ -48,7 +52,7 @@ object MySimpleApp {
     val outputoffset: IntWrapper = new IntWrapper(0);
     codec.compress(data, inputoffset, postings.length, compressed, outputoffset);
 
-    System.out.println("compressed from " + (data.length * 4.0) / (1.024) + "B to " + (outputoffset.intValue() * 4.0) / 1.024 + "B");
+//    System.out.println("compressed from " + (data.length * 4.0) / (1.024) + "B to " + (outputoffset.intValue() * 4.0) / 1.024 + "B");
     // we can repack the data: (optional)
     compressed = util.Arrays.copyOf(compressed, outputoffset.intValue());
     compressed
@@ -58,28 +62,42 @@ object MySimpleApp {
 
     val conf = new SparkConf().setAppName("Inverted Index")
     val sc = new SparkContext(conf)
+    val filePath = "/home/shiwangi/Downloads/wtx001/B"
+
     println("Enter number if files you want to deal with");
+
     val input: InputStreamReader = new InputStreamReader(System.in);
     val br: BufferedReader = new BufferedReader(input);
     val nFiles: Int = Integer.parseInt(br.readLine());
+
     //The RDD for all words and Postings
     var wordsMappedPosting: RDD[(String, Posting)] = sc.emptyRDD;
-
+    var sol = "";
     /**
      * Populating the RDD
      */
     System.out.println("Enter file path")
-    val logFile = br.readLine()
+    //val logFile = br.readLine()
+    //val logFile = "/home/shiwangi/inverted"
     for (i <- 1 to nFiles) {
-     // val logFile = "file://home/others/IIMA20042/README.txt" // Read the fileName instead
-      val logData = sc.textFile(logFile, 2).cache()
+      val df:DecimalFormat = new DecimalFormat("00");
+      val docNum = df.format(i);
+      val logFile = filePath + String.valueOf(docNum);
+      val linesList = sc.textFile(logFile, 2).cache()
+      val specialCharFreeLinesList = linesList.map(line => line.replaceAll("<.*>|[^A-Za-z0-9 ]",""))
+      val logData = specialCharFreeLinesList.map(line => line.toLowerCase())
       val docId = i;
       val words = logData.flatMap(line => line.split(" "))
       val wordsMappedToOne: RDD[(String, Posting)] = words.map(word => (word, new Posting(docId, 1)))
       wordsMappedPosting = wordsMappedPosting.++(wordsMappedToOne);
     }
-
-
+    wordsMappedPosting.collect.toSeq.sortBy(_._2)(PostingOrdering)
+//    for(a <- wordsMappedPosting){
+//      print(a._1)
+//      val p:Posting = a._2
+//      println(" "+p._id+" "+p._frequency)
+//
+//    }
     val map = scala.collection.mutable.Map.empty[String, Array[Int]]
 
     /**
@@ -87,10 +105,19 @@ object MySimpleApp {
      * So essentially listWord Should be a RDD
      */
     val listWord = wordsMappedPosting.groupByKey();
-
+//    for(a <- listWord){
+//      print(a._1)
+//      val postings = a._2
+//      for (p <- postings) {
+//        println(p._id + " " + p._frequency)
+//      }
+//
+//    }
     /**
      * TODO : Will all these operations be performed on clusters? Which of the operations are actions and which ones Transformation?
      */
+    val file = new File("/home/shiwangi/postingsOutput.txt")
+    val bw = new BufferedWriter(new FileWriter(file))
 
     for ((word, post) <- listWord) {
       val postingMap = post.map(p => (p._id, p._frequency));
@@ -98,13 +125,21 @@ object MySimpleApp {
       var postings: MutableList[Int] = MutableList();
       for ((id, freq) <- groupedPosting) {
         val x = freq.foldLeft(0)((r, c) => r + c._2)
-        println(word + " -> (" + id + " , " + x + ")")
         postings += (id);
         postings += x;
       }
+//      print(word + " -> ");
+//      for (x <- postings) {
+//        print(x + " ")
+//      }
+//      println()
       val compressedPostings: Array[Int] = compress(postings)
+      println(word.toString()+"\t"+compressedPostings.toString())
+      sol = sol + word.toString()+"\t"+compressedPostings.toString() +"\n";
       map(word) = compressedPostings
     }
-
+    val x= sol;
+    new PrintWriter("/home/shiwangi/postingsOutputNew.txt") { write(x); close }
+//    bw.close()
   }
 }
