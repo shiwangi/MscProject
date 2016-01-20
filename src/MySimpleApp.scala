@@ -25,13 +25,16 @@ object PostingOrdering extends Ordering[Posting] {
 
 object MySimpleApp {
 
+
+  val conf = new SparkConf().setAppName("Inverted Index")
+  val sc = new SparkContext(conf)
   /**
    * Compresses the list of Postings
    *
    * @param postings
    * @return
    */
-  def compress(postings: mutable.MutableList[Int]): Array[Int] = {
+  def compress(postings: mutable.MutableList[Int]): List[Int] = {
     val codec: IntegratedIntegerCODEC = new
         IntegratedComposition(
           new IntegratedBinaryPacking(),
@@ -55,13 +58,33 @@ object MySimpleApp {
 //    System.out.println("compressed from " + (data.length * 4.0) / (1.024) + "B to " + (outputoffset.intValue() * 4.0) / 1.024 + "B");
     // we can repack the data: (optional)
     compressed = util.Arrays.copyOf(compressed, outputoffset.intValue());
-    compressed
+    compressed.toList
+  }
+
+  var y:List[(String,List[Int])] = List[(String,List[Int])]();
+
+  def reduce(listWord: RDD[(String,Iterable[Posting])]): List[(String,List[Int])] = {
+
+
+    for ((word, post) <- listWord) {
+      val postingMap = post.map(p => (p._id, p._frequency));
+      val groupedPosting = postingMap.groupBy(_._1);
+      var postings: MutableList[Int] = MutableList();
+      for ((id, freq) <- groupedPosting) {
+        val x = freq.foldLeft(0)((r, c) => r + c._2)
+        postings += (id);
+        postings += x;
+      }
+
+      val compressedPostings: List[Int] = compress(postings);
+      y = (word,compressedPostings)::y;
+
+    }
+    y
   }
 
   def main(args: Array[String]) {
 
-    val conf = new SparkConf().setAppName("Inverted Index")
-    val sc = new SparkContext(conf)
     val filePath = "/home/shiwangi/Downloads/wtx001/B"
 
     println("Enter number if files you want to deal with");
@@ -102,9 +125,10 @@ object MySimpleApp {
 
     /**
      * Here I'm performing a transformation on a RDD ~~Returns a pointer to a RDD
-     * So essentially listWord Should be a RDD
+     * So essentially listWord Should be an RDD
      */
-    val listWord = wordsMappedPosting.groupByKey();
+    val listWord: RDD[(String,Iterable[Posting])] = wordsMappedPosting.groupByKey();
+
 //    for(a <- listWord){
 //      print(a._1)
 //      val postings = a._2
@@ -117,29 +141,10 @@ object MySimpleApp {
      * TODO : Will all these operations be performed on clusters? Which of the operations are actions and which ones Transformation?
      */
     val file = new File("/home/shiwangi/postingsOutput.txt")
-    val bw = new BufferedWriter(new FileWriter(file))
 
-    for ((word, post) <- listWord) {
-      val postingMap = post.map(p => (p._id, p._frequency));
-      val groupedPosting = postingMap.groupBy(_._1);
-      var postings: MutableList[Int] = MutableList();
-      for ((id, freq) <- groupedPosting) {
-        val x = freq.foldLeft(0)((r, c) => r + c._2)
-        postings += (id);
-        postings += x;
-      }
-//      print(word + " -> ");
-//      for (x <- postings) {
-//        print(x + " ")
-//      }
-//      println()
-      val compressedPostings: Array[Int] = compress(postings)
-      println(word.toString()+"\t"+compressedPostings.toString())
-      sol = sol + word.toString()+"\t"+compressedPostings.toString() +"\n";
-      map(word) = compressedPostings
-    }
-    val x= sol;
-    new PrintWriter("/home/shiwangi/postingsOutputNew.txt") { write(x); close }
-//    bw.close()
+    val compressedPostings: List[(String,List[Int])]  = reduce(listWord);
+    val x:RDD[(String,List[Int])] = sc.parallelize(y,1);
+    x.saveAsTextFile("/home/shiwangi/PostOut")
+    sc.stop();
   }
 }
